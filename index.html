@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="mk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pocket Watcher - Календар Тракер</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for mobile-first layout and max width */
+        body {
+            background-color: #1f2937; /* Dark background for the body */
+            color: #f3f4f6;
+            display: flex;
+            justify-content: center;
+            padding: 1rem;
+        }
+        #app-container {
+            width: 100%;
+            max-width: 400px; /* Max width for mobile-friendly centered app */
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        /* Style for the scrollable transaction history */
+        #history-list {
+            max-height: 40vh; /* Limit height for scrollability on mobile */
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        #history-list::-webkit-scrollbar {
+            width: 5px;
+        }
+        #history-list::-webkit-scrollbar-thumb {
+            background: #4b5563;
+            border-radius: 10px;
+        }
+        #history-list::-webkit-scrollbar-track {
+            background: #1f2937;
+        }
+        /* Collapsible section styles */
+        .collapsible-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+        .collapsible-content.open {
+            max-height: 200px;
+            transition: max-height 0.5s ease-in;
+        }
+        /* Calendar Specific Styles */
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 2px;
+        }
+        .calendar-day {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 35px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background-color 0.15s;
+            border-radius: 4px;
+        }
+        .calendar-day.day-name {
+            font-weight: bold;
+            color: #9ca3af; /* Gray-400 */
+            cursor: default;
+        }
+        .calendar-day.day-of-month {
+            background-color: #4b5563; /* Gray-600 */
+        }
+        .calendar-day.day-of-month:hover {
+            background-color: #6b7280; /* Gray-500 */
+        }
+        .calendar-day.is-selected {
+            background-color: #3b82f6; /* Blue-500 */
+            color: white;
+            font-weight: bold;
+            box-shadow: 0 0 5px rgba(59, 130, 246, 0.7);
+        }
+        .calendar-day.not-in-month {
+            color: #6b7280; /* Gray-500 */
+            background-color: #374151; /* Gray-700 background */
+            cursor: default;
+        }
+        .calendar-day.has-spending {
+            border: 2px solid #ef4444; /* Red-500 border for days with transactions */
+        }
+    </style>
+</head>
+<body class="bg-gray-800 text-gray-100">
+
+    <div id="app-container">
+
+        <div class="bg-gray-700 p-4 rounded-xl shadow-lg border-l-4 border-yellow-400">
+            <h2 class="text-lg font-bold mb-2 text-yellow-400">🤖 АИ Финансиски Консултант</h2>
+            <p id="consultant-advice" class="text-sm italic">
+                </p>
+        </div>
+
+        <div class="bg-gray-900 p-4 rounded-xl shadow-lg">
+            <p class="text-sm text-gray-400 uppercase font-semibold">Достапен Кеш (Баланс)</p>
+            <p id="current-balance" class="text-3xl font-extrabold mt-1 text-green-400">
+                $0.00
+            </p>
+        </div>
+
+        <div class="bg-gray-700 p-4 rounded-xl shadow-lg">
+            <h2 class="text-xl font-bold mb-3 text-white">Изберете Датум</h2>
+            <p class="text-sm text-gray-400 mb-2">Кликнете датум за да **внесувате трошок** за него и да ја **видите историјата**.</p>
+           
+            <div class="flex justify-between items-center mb-3">
+                <button id="prev-month-btn" class="text-blue-400 hover:text-blue-300 font-bold p-2">&lt; Претходен</button>
+                <span id="current-month-year" class="text-lg font-bold text-white">Месец Година</span>
+                <button id="next-month-btn" class="text-blue-400 hover:text-blue-300 font-bold p-2">Следен &gt;</button>
+            </div>
+           
+            <div id="calendar-grid-container" class="calendar-grid">
+                </div>
+        </div>
+
+        <div class="bg-gray-700 p-4 rounded-xl shadow-lg border-t-4 border-blue-400">
+            <h2 class="text-xl font-bold mb-3 text-white">Внеси Трошок за: <span id="selected-date-display" class="text-blue-400">Денес</span></h2>
+           
+            <form id="expense-form" class="space-y-3">
+                <input type="text" id="expense-description" placeholder="Опис на Трошокот (на пр., Кафе)" required class="w-full p-3 rounded-lg bg-gray-600 text-white border border-gray-500 focus:ring-red-500 focus:border-red-500">
+                <input type="number" id="expense-amount" placeholder="Износ (на пр., 4.50)" required min="0.01" step="0.01" class="w-full p-3 rounded-lg bg-gray-600 text-white border border-gray-500 focus:ring-red-500 focus:border-red-500">
+                <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white font-semibold p-3 rounded-lg transition duration-200 shadow-md">
+                    Внеси Трошок
+                </button>
+            </form>
+        </div>
+
+        <div class="bg-gray-700 p-4 rounded-xl shadow-lg flex-grow">
+            <h2 class="text-xl font-bold mb-3 text-white">Историја за: <span id="history-date-display" class="text-blue-400">Денес</span></h2>
+            <div id="history-list">
+                <p id="no-history-message" class="text-gray-400 text-center py-4">Нема внесени трошоци за овој датум.</p>
+            </div>
+        </div>
+
+        <div class="bg-gray-700 p-4 rounded-xl shadow-lg">
+            <button id="toggle-balance-btn" class="w-full text-left font-bold text-lg text-green-400 hover:text-green-300 transition duration-200 flex justify-between items-center p-2 -m-2">
+                Постави/Ресетирај Почетен Баланс ⚙️
+                <span id="toggle-icon" class="text-xl transform rotate-0 transition-transform duration-300">+</span>
+            </button>
+
+            <div id="initial-balance-section" class="collapsible-content mt-3 pt-3 border-t border-gray-600">
+                <p class="mb-3 text-sm text-gray-300">Поставувањето нов баланс ќе го **ресетира вашиот моментален достапен кеш** и референцата на АИ Консултантот, но НЕМА да ја избрише вашата историја на трансакции.</p>
+                <input type="number" id="starting-balance-input" placeholder="Внесете Нов Почетен Кеш" class="w-full p-3 rounded-lg bg-gray-600 text-white border border-gray-500 focus:ring-green-500 focus:border-green-500" min="0" step="0.01">
+                <button id="set-starting-balance-btn" class="mt-3 w-full bg-green-600 hover:bg-green-700 text-white font-semibold p-3 rounded-lg transition duration-200 shadow-md">Ажурирај Почетен Баланс</button>
+                <p id="balance-error" class="text-red-400 mt-2 hidden text-sm">Ве молиме внесете валиден почетен баланс.</p>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // --- GLOBAL STATE ---
+            let balance = 0;
+            let transactions = [];
+            let initialBalance = 0;
+           
+            // Calendar State
+            const today = new Date();
+            let currentMonth = today.getMonth();
+            let currentYear = today.getFullYear();
+           
+            // Date for EXPENSE ENTRY (The date the new transaction will be logged for)
+            let selectedDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+            // Date for HISTORY VIEWING (The date history panel is currently showing)
+            let viewingDate = formatSelectedDateForData(selectedDate);
+
+            // --- DOM REFERENCES ---
+            const balanceEl = document.getElementById('current-balance');
+            const historyListEl = document.getElementById('history-list');
+            const expenseForm = document.getElementById('expense-form');
+            const expenseDescInput = document.getElementById('expense-description');
+            const expenseAmountInput = document.getElementById('expense-amount');
+            const consultantAdviceEl = document.getElementById('consultant-advice');
+            const balanceSection = document.getElementById('initial-balance-section');
+            const toggleBalanceBtn = document.getElementById('toggle-balance-btn');
+            const toggleIcon = document.getElementById('toggle-icon');
+            const startingBalanceInput = document.getElementById('starting-balance-input');
+            const setStartingBalanceBtn = document.getElementById('set-starting-balance-btn');
+            const balanceErrorEl = document.getElementById('balance-error');
+
+            // Calendar DOM Elements
+            const calendarGridContainer = document.getElementById('calendar-grid-container');
+            const currentMonthYearEl = document.getElementById('current-month-year');
+            const selectedDateDisplay = document.getElementById('selected-date-display');
+            const historyDateDisplay = document.getElementById('history-date-display');
+            const prevMonthBtn = document.getElementById('prev-month-btn');
+            const nextMonthBtn = document.getElementById('next-month-btn');
+           
+            // Macedonian Translations for days and months
+            const dayNames = ['Нед', 'Пон', 'Вто', 'Сре', 'Чет', 'Пет', 'Саб'];
+            const monthNames = ["Јануари", "Февруари", "Март", "Април", "Мај", "Јуни", "Јули", "Август", "Септември", "Октомври", "Ноември", "Декември"];
+
+            // --- UTILITY FUNCTIONS ---
+
+            const formatCurrency = (num) => {
+                // Use a generic currency format or change to Macedonian denar (MKD) if preferred
+                return new Intl.NumberFormat('mk-MK', {
+                    style: 'currency',
+                    currency: 'MKD', // Changed to Macedonian Denar (MKD)
+                }).format(num);
+            };
+
+            /**
+             * Formats a Date object to YYYY-MM-DD string (for data storage and filtering).
+             */
+            function formatSelectedDateForData(date) {
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+           
+            /**
+             * Formats a Date object (or YYYY-MM-DD string) to a readable string (for UI).
+             */
+            function formatSelectedDateForDisplay(dateInput) {
+                const date = (typeof dateInput === 'string') ? new Date(dateInput + 'T00:00:00') : dateInput;
+                return date.toLocaleDateString('mk-MK', { weekday: 'short', month: 'short', day: 'numeric' });
+            };
+
+            const saveData = () => {
+                localStorage.setItem('pocketWatcherBalance', balance.toFixed(2));
+                localStorage.setItem('pocketWatcherTransactions', JSON.stringify(transactions));
+                localStorage.setItem('pocketWatcherInitialBalance', initialBalance.toFixed(2));
+            };
+
+            // --- HISTORY RENDERING LOGIC ---
+
+            const renderHistory = () => {
+                // 1. Filter transactions based on the global viewingDate string
+                const transactionsToDisplay = transactions.filter(t => t.date === viewingDate);
+                historyListEl.innerHTML = '';
+               
+                // 2. Update the History header
+                const dailyTotal = transactionsToDisplay.reduce((sum, t) => sum + t.amount, 0);
+                const dailyTotalDisplay = formatCurrency(Math.abs(dailyTotal));
+                const totalText = dailyTotal < 0 ? `Вкупно Потрошено: ${dailyTotalDisplay}` : `Вкупно Добиено/Нето: ${dailyTotalDisplay}`;
+
+                historyDateDisplay.innerHTML = `${formatSelectedDateForDisplay(viewingDate)}
+                    <span class="text-sm text-gray-400">(${totalText})</span>`;
+               
+
+                if (transactionsToDisplay.length === 0) {
+                    historyListEl.innerHTML = '<p id="no-history-message" class="text-gray-400 text-center py-4">Нема внесени трошоци за овој датум.</p>';
+                } else {
+                    // Sort by time (newest first)
+                    transactionsToDisplay.sort((a, b) => b.timestamp - a.timestamp).forEach((transaction) => {
+                        const transactionEl = document.createElement('div');
+                        transactionEl.className = 'flex justify-between items-center p-3 bg-gray-600 rounded-lg shadow-sm hover:bg-gray-500 transition duration-150';
+                       
+                        const time = new Date(transaction.timestamp).toLocaleTimeString('mk-MK', { hour: '2-digit', minute: '2-digit' });
+                        const amountText = formatCurrency(transaction.amount);
+                        const amountClass = transaction.amount > 0 ? 'text-green-400' : 'text-red-400';
+                       
+                        transactionEl.innerHTML = `
+                            <div class="flex flex-col flex-grow">
+                                <span class="text-sm font-semibold">${transaction.description}</span>
+                                <span class="text-xs text-gray-400">во ${time}</span>
+                            </div>
+                            <span class="text-lg font-bold ${amountClass} mx-3">${amountText}</span>
+                            <button data-id="${transaction.id}" class="delete-btn text-gray-400 hover:text-red-400 text-lg ml-2 transition duration-150 p-1">
+                                &times;
+                            </button>
+                        `;
+                        historyListEl.appendChild(transactionEl);
+                    });
+                }
+
+                document.querySelectorAll('.delete-btn').forEach(button => {
+                    button.addEventListener('click', handleDeleteTransaction);
+                });
+            };
+
+            // --- CALENDAR LOGIC ---
+
+            const renderCalendar = () => {
+                calendarGridContainer.innerHTML = '';
+                currentMonthYearEl.textContent = `${monthNames[currentMonth]} ${currentYear}`;
+               
+                // Create a map for quick lookup of dates with spending
+                const spendingDates = new Set(transactions.map(t => t.date));
+
+                // 1. Add Day Names
+                dayNames.forEach(dayName => {
+                    const dayEl = document.createElement('div');
+                    dayEl.className = 'calendar-day day-name';
+                    dayEl.textContent = dayName;
+                    calendarGridContainer.appendChild(dayEl);
+                });
+
+                const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay();
+                const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+                const daysInPrevMonth = new Date(currentYear, currentMonth, 0).getDate();
+
+                // 2. Add padding days
+                for (let i = firstDayOfMonth; i > 0; i--) {
+                    const dayEl = document.createElement('div');
+                    dayEl.className = 'calendar-day not-in-month';
+                    dayEl.textContent = daysInPrevMonth - i + 1;
+                    calendarGridContainer.appendChild(dayEl);
+                }
+
+                // 3. Add days of the current month
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const date = new Date(currentYear, currentMonth, day);
+                    const dateString = formatSelectedDateForData(date);
+                    const dayEl = document.createElement('div');
+                   
+                    dayEl.className = 'calendar-day day-of-month';
+                    dayEl.textContent = day;
+                    dayEl.dataset.date = dateString;
+
+                    // Highlight currently selected date (for expense entry)
+                    const isSelected = selectedDate && dateString === formatSelectedDateForData(selectedDate);
+                    if (isSelected) {
+                        dayEl.classList.add('is-selected');
+                    }
+                   
+                    // Highlight days that have transactions
+                    if (spendingDates.has(dateString)) {
+                        dayEl.classList.add('has-spending');
+                    }
+
+                    dayEl.addEventListener('click', handleDateSelect);
+                    calendarGridContainer.appendChild(dayEl);
+                }
+
+                // 4. Add trailing padding
+                const totalDays = firstDayOfMonth + daysInMonth;
+                const remainingCells = 42 - totalDays;
+               
+                let nextDay = 1;
+                for (let i = 0; i < remainingCells; i++) {
+                    const dayEl = document.createElement('div');
+                    dayEl.className = 'calendar-day not-in-month';
+                    dayEl.textContent = nextDay++;
+                    calendarGridContainer.appendChild(dayEl);
+                }
+            };
+           
+            const handleDateSelect = (e) => {
+                const dateString = e.target.dataset.date;
+                if (dateString) {
+                    // 1. Handle Selection Visuals
+                    const previouslySelected = document.querySelector('.calendar-day.is-selected');
+                    if (previouslySelected) {
+                        previouslySelected.classList.remove('is-selected');
+                    }
+                    e.target.classList.add('is-selected');
+                   
+                    // 2. Update Expense Entry Date (selectedDate object)
+                    selectedDate = new Date(dateString);
+                    selectedDateDisplay.textContent = formatSelectedDateForDisplay(selectedDate);
+                   
+                    // 3. Update History Viewing Date (viewingDate string)
+                    viewingDate = dateString;
+
+                    // 4. Re-render the history panel
+                    renderHistory();
+                }
+            };
+
+            const changeMonth = (delta) => {
+                currentMonth += delta;
+                if (currentMonth > 11) {
+                    currentMonth = 0;
+                    currentYear++;
+                } else if (currentMonth < 0) {
+                    currentMonth = 11;
+                    currentYear--;
+                }
+                renderCalendar();
+            };
+
+            // --- UI RENDERING & ADVICE ---
+
+            const renderUI = () => {
+                balanceEl.textContent = formatCurrency(balance);
+                balanceEl.className = `text-3xl font-extrabold mt-1 ${balance >= 0 ? 'text-green-400' : 'text-red-400'}`;
+
+                renderCalendar();
+                renderHistory(); // Always re-render history when the main UI changes
+                updateConsultantAdvice();
+            };
+
+            const updateConsultantAdvice = () => {
+                let advice = "";
+                let referenceBalance = initialBalance > 0 ? initialBalance : 1;
+                let percentage = (balance / referenceBalance) * 100;
+
+                if (initialBalance === 0 || isNaN(initialBalance)) {
+                    advice = "Добредојдовте! Поставете го вашиот почетен баланс со помош на контролата подолу за да ја активирате функцијата.";
+                } else if (transactions.length === 0) {
+                    advice = "Добредојдовте! Изберете датум на календарот и внесете го вашиот прв трошок.";
+                } else if (percentage > 90) {
+                    advice = "Одлично следење! Работите како вистински финансиски професионалец. 🎉";
+                } else if (percentage > 50) {
+                    advice = "Изгледа стабилно. Внимавајте на дневните трошења. 👍";
+                } else if (percentage > 10) {
+                    advice = "Внимавајте на трансакциите! Ви снемуваат средства. 😬";
+                } else {
+                    advice = "АЛАРМ ЗА ИТНОСТ! Pocket Watcher вели: Престанете со сите непотребни трошења СЕГА. 🚨";
+                }
+                consultantAdviceEl.textContent = advice;
+            };
+
+            // --- CORE LOGIC FUNCTIONS ---
+
+            const handleAddExpense = (e) => {
+                e.preventDefault();
+
+                const description = expenseDescInput.value.trim();
+                const amount = parseFloat(expenseAmountInput.value);
+
+                if (!description || isNaN(amount) || amount <= 0) {
+                    alert("Ве молиме внесете валиден опис и позитивен износ.");
+                    return;
+                }
+                if (initialBalance === 0) {
+                     alert("Ве молиме прво поставете го вашиот почетен баланс користејќи го делот на дното.");
+                     return;
+                }
+               
+                // Use the date selected on the calendar (selectedDate object)
+                const transactionDate = formatSelectedDateForData(selectedDate);
+
+                const newTransaction = {
+                    id: Date.now(),
+                    description: description,
+                    amount: -Math.abs(amount),
+                    date: transactionDate,
+                    timestamp: Date.now()
+                };
+
+                balance += newTransaction.amount;
+                transactions.push(newTransaction);
+                saveData();
+               
+                // IMPORTANT: If we log an expense for the current viewing date, re-render history
+                if (transactionDate === viewingDate) {
+                    renderUI();
+                } else {
+                    // If we log for a different date, we only need to update the calendar/consultant
+                    renderCalendar();
+                    updateConsultantAdvice();
+                }
+
+                expenseDescInput.value = '';
+                expenseAmountInput.value = '';
+            };
+
+            const handleDeleteTransaction = (e) => {
+                const transactionId = parseInt(e.currentTarget.dataset.id);
+                const transactionIndex = transactions.findIndex(t => t.id === transactionId);
+
+                if (transactionIndex !== -1) {
+                    const transactionToRemove = transactions[transactionIndex];
+                   
+                    balance -= transactionToRemove.amount;
+                    transactions.splice(transactionIndex, 1);
+
+                    saveData();
+                    renderUI();
+                }
+            };
+
+            const setStartingBalance = () => {
+                const startingCash = parseFloat(startingBalanceInput.value);
+
+                if (isNaN(startingCash) || startingCash <= 0) {
+                    balanceErrorEl.classList.remove('hidden');
+                    return;
+                }
+                balanceErrorEl.classList.add('hidden');
+
+                balance = startingCash;
+                initialBalance = startingCash;
+               
+                saveData();
+                renderUI();
+                startingBalanceInput.value = '';
+
+                if (balanceSection.style.maxHeight !== "0px" && balanceSection.style.maxHeight !== "") {
+                    toggleBalanceSection();
+                }
+            };
+
+            const toggleBalanceSection = () => {
+                const content = balanceSection;
+                const isCollapsed = content.style.maxHeight === "" || content.style.maxHeight === "0px";
+
+                if (isCollapsed) {
+                    content.style.maxHeight = content.scrollHeight + "px";
+                    toggleIcon.textContent = '–';
+                    toggleIcon.classList.add('rotate-180');
+                } else {
+                    content.style.maxHeight = "0";
+                    toggleIcon.textContent = '+';
+                    toggleIcon.classList.remove('rotate-180');
+                }
+            };
+
+            const init = () => {
+                const storedBalance = localStorage.getItem('pocketWatcherBalance');
+                const storedTransactions = localStorage.getItem('pocketWatcherTransactions');
+                const storedInitialBalance = localStorage.getItem('pocketWatcherInitialBalance');
+
+                if (storedBalance !== null) {
+                    balance = parseFloat(storedBalance);
+                    transactions = storedTransactions ? JSON.parse(storedTransactions) : [];
+                }
+               
+                if (storedInitialBalance !== null && !isNaN(parseFloat(storedInitialBalance))) {
+                    initialBalance = parseFloat(storedInitialBalance);
+                } else {
+                    initialBalance = 0;
+                }
+               
+                // Initialize the viewing date to today
+                viewingDate = formatSelectedDateForData(selectedDate);
+               
+                // Initial Calendar View setup
+                currentMonth = selectedDate.getMonth();
+                currentYear = selectedDate.getFullYear();
+               
+                renderUI();
+            };
+
+            // --- EVENT LISTENERS ---
+            prevMonthBtn.addEventListener('click', () => changeMonth(-1));
+            nextMonthBtn.addEventListener('click', () => changeMonth(1));
+            expenseForm.addEventListener('submit', handleAddExpense);
+            toggleBalanceBtn.addEventListener('click', toggleBalanceSection);
+            setStartingBalanceBtn.addEventListener('click', setStartingBalance);
+           
+            init();
+        });
+    </script>
+</body>
+</html>
